@@ -1,157 +1,318 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-<meta charset="UTF-8">
-<title>VR Goal</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VR-Goal Wallpaper</title>
 <style>
-body{
- margin:0;
- background:#111;
- color:#fff;
- font-family:sans-serif;
- text-align:center;
-}
-
-.wrapper{
- max-width:1179px;
- margin:auto;
- padding:40px 20px;
- position:relative;
-}
-
-.wrapper::before,
-.wrapper::after{
- content:"";
- position:absolute;
- left:0;
- right:0;
- height:2px;
- background:rgba(255,255,255,0.25);
-}
-
-.wrapper::before{ top:0; }
-.wrapper::after{ bottom:0; }
-
-.yearbar{
- display:flex;
- justify-content:space-between;
- margin-bottom:30px;
-}
-
-.year{
- flex:1;
- margin:0 2px;
- height:14px;
- background:#333;
- border-radius:20px;
- position:relative;
-}
-
-.year.done{ background:#fff; }
-.year.current{ background:#ff9800; }
-
-.months{
- display:grid;
- grid-template-columns:repeat(3,1fr);
- gap:20px;
-}
-
-.month{
- padding:10px;
- background:#181818;
- border-radius:14px;
-}
-
-.label{
- margin-bottom:8px;
- font-size:14px;
- opacity:.7;
-}
-
-.days{
- display:grid;
- grid-template-columns:repeat(7,1fr);
- gap:3px;
-}
-
-.day{
- width:100%;
- padding-top:100%;
- border-radius:50%;
- background:#333;
-}
-
-.day.done{ background:#fff; }
-.day.today{ background:#ff9800; }
+  body{margin:0;background:#111;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  .wrap{max-width:980px;margin:0 auto;padding:16px;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  input,button{font-size:14px;padding:10px 12px;border-radius:10px;border:1px solid #2a2a2a;background:#151515;color:#fff;}
+  button{cursor:pointer;}
+  canvas{display:block;width:100%;height:auto;border-radius:16px;background:#111;margin-top:12px;}
+  .hint{opacity:.7;font-size:12px;margin-top:8px;line-height:1.4}
 </style>
 </head>
 <body>
+<div class="wrap">
+  <div class="row">
+    <label>Start <input id="start" type="date" value="2021-12-05"></label>
+    <label>Goal <input id="goal" type="date" value="2031-12-05"></label>
+    <label>Title <input id="title" type="text" value="V.R. 10Y"></label>
+    <button id="renderBtn">렌더</button>
+    <button id="saveBtn">PNG 저장</button>
+  </div>
 
-<div class="wrapper">
-
-<div id="yearbar" class="yearbar"></div>
-<div id="months" class="months"></div>
-
+  <canvas id="c" width="1179" height="2556"></canvas>
+  <div class="hint">
+    캔버스는 항상 1179×2556(아이폰 월페이퍼)로 고정 렌더링됨. 브라우저에서 보이는 크기는 축소 표시일 뿐, 저장 PNG는 원본 해상도 그대로 저장됨.
+  </div>
 </div>
 
 <script>
-const start = new Date("2021-12-05");
-const goal = new Date("2031-12-05");
-const today = new Date();
+(() => {
+  const W = 1179, H = 2556;
 
-const yearbar=document.getElementById("yearbar");
-const monthsEl=document.getElementById("months");
+  const c = document.getElementById('c');
+  const ctx = c.getContext('2d');
 
-const startYear=start.getFullYear();
-const goalYear=goal.getFullYear();
-const currentYear=today.getFullYear();
+  const elStart = document.getElementById('start');
+  const elGoal  = document.getElementById('goal');
+  const elTitle = document.getElementById('title');
 
-/* ===== 상단 10년 바 ===== */
-for(let y=startYear;y<=goalYear;y++){
- const d=document.createElement("div");
- d.className="year";
- if(y<currentYear)d.classList.add("done");
- if(y===currentYear)d.classList.add("current");
- yearbar.appendChild(d);
-}
+  const btnRender = document.getElementById('renderBtn');
+  const btnSave = document.getElementById('saveBtn');
 
-/* ===== 현재 연도 달력 ===== */
-const names=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const BG = '#111';
+  const DOT_FUTURE = '#333';
+  const DOT_DONE = '#ffffff';
+  const ACCENT = '#ff9800';
+  const RAIL = 'rgba(255,255,255,0.22)';
 
-for(let m=0;m<12;m++){
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
 
- const month=document.createElement("div");
- month.className="month";
+  function ymd(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const da = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${da}`;
+  }
 
- const label=document.createElement("div");
- label.className="label";
- label.textContent=names[m];
- month.appendChild(label);
+  function parseDate(v){
+    // 입력이 비었을 경우 오늘
+    if(!v) return new Date();
+    const [y,m,d] = v.split('-').map(Number);
+    return new Date(y, m-1, d);
+  }
 
- const days=document.createElement("div");
- days.className="days";
+  function daysBetween(a,b){
+    // 날짜만 비교(시간 제거)
+    const A = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+    const B = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+    return Math.floor((B - A) / 86400000);
+  }
 
- const daysInMonth=new Date(currentYear,m+1,0).getDate();
+  function sameDay(a,b){
+    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
+  }
 
- for(let d=1;d<=daysInMonth;d++){
-  const dot=document.createElement("div");
-  dot.className="day";
+  function clear(){
+    ctx.fillStyle = BG;
+    ctx.fillRect(0,0,W,H);
+  }
 
-  const date=new Date(currentYear,m,d);
+  function drawRails(){
+    const pad = Math.round(H*0.06); // 위/아래 여백 6%
+    ctx.save();
+    ctx.strokeStyle = RAIL;
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(40, pad);
+    ctx.lineTo(W-40, pad);
+    ctx.moveTo(40, H-pad);
+    ctx.lineTo(W-40, H-pad);
+    ctx.stroke();
+    ctx.restore();
+  }
 
-  if(date<today)dot.classList.add("done");
-  if(
-   d===today.getDate() &&
-   m===today.getMonth()
-  )dot.classList.add("today");
+  function drawTitle(title, pctText, leftText){
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = '700 54px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, 170);
 
-  days.appendChild(dot);
- }
+    ctx.font = '500 26px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.fillText(`${leftText} · ${pctText}`, W/2, 215);
+    ctx.restore();
+  }
 
- month.appendChild(days);
- monthsEl.appendChild(month);
-}
+  function drawYearTimeline(start, goal, today){
+    // 상단 10년(혹은 기간 범위) 연도 바
+    const y0 = start.getFullYear();
+    const y1 = goal.getFullYear();
+    const years = [];
+    for(let y=y0; y<=y1; y++) years.push(y);
+
+    const x0 = 70, x1 = W-70;
+    const y = 300;
+    const barH = 18;
+    const gap = 8;
+    const n = years.length;
+    const totalGap = gap*(n-1);
+    const barW = Math.floor((x1-x0-totalGap)/n);
+
+    ctx.save();
+    for(let i=0;i<n;i++){
+      const yr = years[i];
+      const x = x0 + i*(barW+gap);
+
+      const yearStart = new Date(yr,0,1);
+      const yearEnd = new Date(yr,11,31);
+
+      let fill = DOT_FUTURE;
+      if(yearEnd < today) fill = DOT_DONE;
+      if(today >= yearStart && today <= yearEnd) fill = ACCENT;
+
+      // 바
+      ctx.fillStyle = fill;
+      roundRect(ctx, x, y, barW, barH, 999, true);
+
+      // 올해 진행률(현재 연도면 얇게 오버레이)
+      if(today >= yearStart && today <= yearEnd){
+        const total = daysBetween(yearStart, new Date(yr+1,0,1));
+        const done = clamp(daysBetween(yearStart, today), 0, total);
+        const frac = total ? done/total : 0;
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        roundRect(ctx, x, y, Math.max(6, Math.floor(barW*frac)), barH, 999, true);
+      }
+    }
+
+    // 연도 라벨(너무 복잡하지 않게 3~4개만)
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '600 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(String(y0), x0, y-12);
+    ctx.textAlign = 'right';
+    ctx.fillText(String(y1), x1, y-12);
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r, fill){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr,y);
+    ctx.arcTo(x+w,y,x+w,y+h,rr);
+    ctx.arcTo(x+w,y+h,x,y+h,rr);
+    ctx.arcTo(x,y+h,x,y,rr);
+    ctx.arcTo(x,y,x+w,y,rr);
+    ctx.closePath();
+    if(fill) ctx.fill();
+  }
+
+  function drawMonths(currentYear, start, goal, today){
+    // 3x4 월 그리드
+    const gridX = 80;
+    const gridY = 420;
+    const gridW = W - 160;
+    const gridH = H - 520 - 220; // 하단 여백 확보
+    const cols = 3, rows = 4;
+    const cellGap = 26;
+
+    const cellW = Math.floor((gridW - cellGap*(cols-1))/cols);
+    const cellH = Math.floor((gridH - cellGap*(rows-1))/rows);
+
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    ctx.save();
+    for(let m=0;m<12;m++){
+      const cx = m % cols;
+      const cy = Math.floor(m / cols);
+      const x = gridX + cx*(cellW+cellGap);
+      const y = gridY + cy*(cellH+cellGap);
+
+      // 카드 배경
+      ctx.fillStyle = '#171717';
+      roundRect(ctx, x, y, cellW, cellH, 22, true);
+
+      // 라벨
+      ctx.fillStyle = 'rgba(255,255,255,0.60)';
+      ctx.font = '700 22px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText(monthNames[m], x+18, y+34);
+
+      // 도트 영역
+      const pad = 18;
+      const dotsX = x + pad;
+      const dotsY = y + 52;
+      const dotsW = cellW - pad*2;
+      const dotsH = cellH - 52 - pad;
+
+      // 7열 고정(달력 느낌), 행은 충분히(최대 6주 = 42)
+      const dotCols = 7;
+      const dotGap = 6;
+
+      // dot size는 가로 기준으로 먼저 산정
+      const dotSize = Math.floor((dotsW - dotGap*(dotCols-1)) / dotCols);
+      const dotRows = Math.floor((dotsH + dotGap) / (dotSize + dotGap)); // 공간에 들어가는 행 수
+      const maxDots = dotCols * dotRows;
+
+      const daysInMonth = new Date(currentYear, m+1, 0).getDate();
+      const firstDay = new Date(currentYear, m, 1).getDay(); // 0=Sun
+
+      // 달력처럼 첫 요일 offset 주기
+      // 필요한 총칸(앞 공백 + 일수)
+      const needed = firstDay + daysInMonth;
+      const used = Math.min(maxDots, Math.max(42, needed)); // 최소 6주 느낌 유지(원하는 경우), 공간이 허용하면
+      const rowsUsed = Math.ceil(used / dotCols);
+
+      // rowsUsed가 dotRows를 넘으면 dotSize를 살짝 줄여 맞춘다(안전장치)
+      let finalDotSize = dotSize;
+      let finalGap = dotGap;
+      if(rowsUsed > dotRows){
+        // 행 수가 부족하면 gap을 줄이고 그래도 부족하면 dotSize를 줄임
+        finalGap = 4;
+        finalDotSize = Math.floor((dotsW - finalGap*(dotCols-1)) / dotCols);
+      }
+
+      // 도트 그리기
+      for(let i=0;i<used;i++){
+        const rx = i % dotCols;
+        const ry = Math.floor(i / dotCols);
+
+        const px = dotsX + rx*(finalDotSize+finalGap);
+        const py = dotsY + ry*(finalDotSize+finalGap);
+
+        // 실제 날짜 매핑
+        const dayNum = i - firstDay + 1; // 1..daysInMonth
+        let fill = DOT_FUTURE;
+
+        if(dayNum >= 1 && dayNum <= daysInMonth){
+          const date = new Date(currentYear, m, dayNum);
+
+          if(date < today) fill = DOT_DONE;
+          if(sameDay(date, today)) fill = ACCENT;
+          if(date > today) fill = DOT_FUTURE;
+
+          // 프로젝트 시작/종료 범위 밖이면 살짝 어둡게(선택)
+          if(date < start || date > goal){
+            fill = 'rgba(255,255,255,0.12)';
+          }
+        } else {
+          // 앞/뒤 공백칸
+          fill = 'rgba(255,255,255,0.10)';
+        }
+
+        ctx.fillStyle = fill;
+        // 원형 도트
+        const r = finalDotSize/2;
+        ctx.beginPath();
+        ctx.arc(px+r, py+r, r, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function render(){
+    const start = parseDate(elStart.value);
+    const goal = parseDate(elGoal.value);
+    const title = (elTitle.value || '').trim() || 'VR Goal';
+    const today = new Date();
+
+    // 이상값 방지: goal < start이면 스왑
+    let S = start, G = goal;
+    if(G < S){ const t=S; S=G; G=t; }
+
+    const total = Math.max(1, daysBetween(S, G));
+    const done = clamp(daysBetween(S, today), 0, total);
+    const pct = Math.floor((done/total)*100);
+
+    const leftDays = Math.max(0, daysBetween(today, G));
+
+    clear();
+    drawRails();
+    drawTitle(title, `${pct}%`, `${leftDays}d left`);
+    drawYearTimeline(S, G, today);
+    drawMonths(today.getFullYear(), S, G, today);
+  }
+
+  function savePng(){
+    const a = document.createElement('a');
+    a.download = 'vr-goal.png';
+    a.href = c.toDataURL('image/png');
+    a.click();
+  }
+
+  btnRender.addEventListener('click', render);
+  btnSave.addEventListener('click', savePng);
+
+  // 첫 렌더
+  render();
+})();
 </script>
-
 </body>
 </html>

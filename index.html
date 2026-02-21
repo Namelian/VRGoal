@@ -8,6 +8,7 @@
   .wrap{max-width:900px;margin:auto;padding:20px}
   canvas{width:100%;border-radius:20px;background:#111}
   .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  #info{font-size:13px;opacity:.85}
   button{padding:8px 14px;background:#151515;border:1px solid #333;color:#fff;border-radius:10px;cursor:pointer}
 </style>
 </head>
@@ -34,12 +35,12 @@ const ctx = canvas.getContext("2d");
 const SAFE_TOP = Math.round(H*0.16);
 const SAFE_BOT = Math.round(H*0.18);
 
-// 달력/연도바 공통 폭(완전 동일)
+// 연도바/달력 공통 폭(완전 동일)
 const COL_W = Math.round(W*0.74);
 const COL_X = Math.round((W - COL_W)/2);
 
-// 전체를 조금 더 아래로
-const SHIFT_Y = 170; // 원하면 200~240까지 올려도 됨
+// 전체를 아래로 조금 내림
+const SHIFT_Y = 170;
 
 /* ===== 스타일 ===== */
 const BG = "#111";
@@ -71,42 +72,21 @@ function clear(){
   ctx.fillStyle = BG;
   ctx.fillRect(0,0,W,H);
 }
-function line(x1,y,x2,w,color){
+function drawLineFullWidth(y, w, color){
+  // ✅ 폭은 달력과 동일: COL_X ~ COL_X+COL_W
   ctx.save();
-  ctx.strokeStyle=color;
-  ctx.lineWidth=w;
-  ctx.lineCap="round";
+  ctx.strokeStyle = color;
+  ctx.lineWidth = w;
+  ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(x1,y);
-  ctx.lineTo(x2,y);
+  ctx.moveTo(COL_X, y);
+  ctx.lineTo(COL_X + COL_W, y);
   ctx.stroke();
   ctx.restore();
 }
 
-/* ===== 핵심: 프로젝트 "연수"를 start 기준으로 계산 (정확히 10년이면 10) ===== */
-function fullYearsFromStart(start, goal){
-  let y = 0;
-  let cursor = new Date(start);
-  while(true){
-    const next = new Date(cursor);
-    next.setFullYear(next.getFullYear()+1);
-    if(next <= goal){
-      y++;
-      cursor = next;
-    } else break;
-  }
-  return y; // start + y년 <= goal 인 최대 y
-}
-
-/* ===== 상단: 지난 연도바(흰색) =====
-   - 프로젝트 연도 범위: startYear ~ (startYear + TOTAL_YEARS - 1)
-   - 달력(현재연도) 제외하고 pastYears만 상단에 그림
-*/
+/* ===== 1) 상단: 지난 연도바(흰색) ===== */
 function drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear){
-  const padX = Math.round(COL_W*0.04);
-  const x0 = COL_X + padX;
-  const x1 = COL_X + COL_W - padX;
-
   const lineH = 6;
   const gap = 18;
 
@@ -117,13 +97,13 @@ function drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear){
 
   let y = SAFE_TOP + 40 + SHIFT_Y;
   for(let i=0;i<pastYears.length;i++){
-    line(x0, y, x1, lineH, LINE_PAST);
+    drawLineFullWidth(y, lineH, LINE_PAST);
     y += gap;
   }
-  return y;
+  return y; // 마지막 줄 아래 y
 }
 
-/* ===== 현재 연도 텍스트 ===== */
+/* ===== 2) 가운데: 현재 연도 텍스트 ===== */
 function drawYearText(year, y){
   ctx.save();
   ctx.fillStyle="rgba(255,255,255,0.92)";
@@ -133,7 +113,7 @@ function drawYearText(year, y){
   ctx.restore();
 }
 
-/* ===== 달력(해당 없는 날짜는 완전 공란) ===== */
+/* ===== 3) 달력(해당 없는 날짜는 완전 공란) ===== */
 function drawMonthsGrid(calendarYear, start, goal, today, topY){
   const cols=3, rows=4;
   const gridX = COL_X;
@@ -176,12 +156,12 @@ function drawMonthsGrid(calendarYear, start, goal, today, topY){
     for(let i=0;i<dotCols*dotRows;i++){
       const dayNum = i - firstDay + 1;
 
-      // ✅ 해당 월에 없는 칸은 "아예 그리지 않음"(완전 공란)
+      // ✅ 해당 월에 없는 칸은 공란(점 없음)
       if(dayNum < 1 || dayNum > daysInMonth) continue;
 
       const d = new Date(calendarYear, m, dayNum);
 
-      // ✅ 프로젝트 범위 밖 날짜도 "아예 그리지 않음"(완전 공란)
+      // ✅ 프로젝트 범위 밖 날짜도 공란(점 없음)
       if(d < start || d > goal) continue;
 
       const dx=i%dotCols;
@@ -204,12 +184,8 @@ function drawMonthsGrid(calendarYear, start, goal, today, topY){
   return topY + (rows*cellH + (rows-1)*gapY);
 }
 
-/* ===== 하단: 다가올 연도바(어두운색) ===== */
+/* ===== 4) 하단: 다가올 연도바(어두운색) ===== */
 function drawFutureLinesBottom(rangeStartYear, rangeEndYear, calendarYear, anchorY){
-  const padX = Math.round(COL_W*0.04);
-  const x0 = COL_X + padX;
-  const x1 = COL_X + COL_W - padX;
-
   const lineH = 6;
   const gap = 18;
 
@@ -220,13 +196,13 @@ function drawFutureLinesBottom(rangeStartYear, rangeEndYear, calendarYear, ancho
 
   let y = anchorY;
   for(let i=0;i<futureYears.length;i++){
-    line(x0, y, x1, lineH, LINE_FUT);
+    drawLineFullWidth(y, lineH, LINE_FUT);
     y += gap;
   }
   return y;
 }
 
-/* ===== 푸터(겹침 방지) ===== */
+/* ===== 5) 푸터 ===== */
 function drawFooter(leftDays, pct){
   const y = H - Math.round(SAFE_BOT*0.55);
 
@@ -269,15 +245,11 @@ function render(){
 
   document.getElementById("info").textContent = `${leftDays}d left · ${pct}%`;
 
-  // ✅ 프로젝트 연수(예: 정확히 10년이면 10)
-  const TOTAL_YEARS = fullYearsFromStart(start, goal);
+  // ✅ 연도바는 2021부터 시작(요구사항)
+  const rangeStartYear = start.getFullYear(); // 2021
+  const rangeEndYear   = goal.getFullYear();  // 2031
 
-  // ✅ 연도 범위: startYear ~ (startYear + TOTAL_YEARS - 1)
-  //    (달력 연도 1개를 제외하면 "TOTAL_YEARS - 1"개의 바가 남음 → 10년이면 9개)
-  const rangeStartYear = start.getFullYear();
-  const rangeEndYear   = rangeStartYear + TOTAL_YEARS - 1;
-
-  // ✅ 달력에 표시할 연도: 원칙은 오늘의 연도, 단 범위 밖이면 범위에 맞춰 클램프
+  // 달력 연도는 기본 오늘 연도, 범위 밖이면 클램프
   let calendarYear = today.getFullYear();
   if(calendarYear < rangeStartYear) calendarYear = rangeStartYear;
   if(calendarYear > rangeEndYear)   calendarYear = rangeEndYear;
@@ -287,7 +259,7 @@ function render(){
   // 1) 상단: 지난 연도바(흰색)
   const pastEndY = drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear);
 
-  // 2) 현재 연도 텍스트
+  // 2) 현재 연도(달력 연도)
   const yearY = pastEndY + 120;
   drawYearText(calendarYear, yearY);
 

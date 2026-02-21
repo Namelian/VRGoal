@@ -5,18 +5,12 @@
 <title>VR Goal</title>
 <style>
   body{margin:0;background:#111;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff}
-  .wrap{max-width:900px;margin:auto;padding:20px}
-  canvas{width:100%;border-radius:20px;background:#111}
-  .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-  #info{font-size:13px;opacity:.85}
-  button{padding:8px 14px;background:#151515;border:1px solid #333;color:#fff;border-radius:10px;cursor:pointer}
+  .wrap{max-width:900px;margin:auto;padding:12px}
+  canvas{width:100%;border-radius:20px;background:#111;display:block}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="top">
-    
-  </div>
   <canvas id="c" width="1179" height="2556"></canvas>
 </div>
 
@@ -33,12 +27,8 @@ const ctx = canvas.getContext("2d");
 /* ===== 레이아웃 ===== */
 const SAFE_TOP = Math.round(H*0.16);
 const SAFE_BOT = Math.round(H*0.18);
-
-// 연도바/달력 공통 폭(완전 동일)
 const COL_W = Math.round(W*0.74);
 const COL_X = Math.round((W - COL_W)/2);
-
-// 전체를 아래로 조금 내림
 const SHIFT_Y = 170;
 
 /* ===== 스타일 ===== */
@@ -72,7 +62,6 @@ function clear(){
   ctx.fillRect(0,0,W,H);
 }
 function drawLineFullWidth(y, w, color){
-  // ✅ 폭은 달력과 동일: COL_X ~ COL_X+COL_W
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = w;
@@ -83,26 +72,6 @@ function drawLineFullWidth(y, w, color){
   ctx.stroke();
   ctx.restore();
 }
-
-/* ===== 1) 상단: 지난 연도바(흰색) ===== */
-function drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear){
-  const lineH = 6;
-  const gap = 18;
-
-  const pastYears = [];
-  for(let y=rangeStartYear; y<=rangeEndYear; y++){
-    if(y < calendarYear) pastYears.push(y);
-  }
-
-  let y = SAFE_TOP + 40 + SHIFT_Y;
-  for(let i=0;i<pastYears.length;i++){
-    drawLineFullWidth(y, lineH, LINE_PAST);
-    y += gap;
-  }
-  return y; // 마지막 줄 아래 y
-}
-
-/* ===== 2) 가운데: 현재 연도 텍스트 ===== */
 function drawYearText(year, y){
   ctx.save();
   ctx.fillStyle="rgba(255,255,255,0.92)";
@@ -111,8 +80,64 @@ function drawYearText(year, y){
   ctx.fillText(String(year), W/2, y);
   ctx.restore();
 }
+function drawFooter(leftDays, pct){
+  const y = H - Math.round(SAFE_BOT*0.55);
 
-/* ===== 3) 달력(해당 없는 날짜는 완전 공란) ===== */
+  ctx.save();
+  ctx.textAlign="center";
+  ctx.font="600 32px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+
+  const leftText = `${leftDays}d left`;
+  const pctText  = `${pct}%`;
+  const midDot = " · ";
+
+  const wLeft = ctx.measureText(leftText).width;
+  const wDot  = ctx.measureText(midDot).width;
+  const wPct  = ctx.measureText(pctText).width;
+  const total = wLeft + wDot + wPct;
+  const x0 = W/2 - total/2;
+
+  ctx.fillStyle = ACCENT;
+  ctx.fillText(leftText, x0 + wLeft/2, y);
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fillText(midDot, x0 + wLeft + wDot/2, y);
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.fillText(pctText, x0 + wLeft + wDot + wPct/2, y);
+
+  ctx.restore();
+}
+
+/* ===== 연도바 ===== */
+function drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear){
+  const lineH = 6;
+  const gap = 18;
+
+  let y = SAFE_TOP + 40 + SHIFT_Y;
+  for(let yr=rangeStartYear; yr<=rangeEndYear; yr++){
+    if(yr < calendarYear){
+      drawLineFullWidth(y, lineH, LINE_PAST);
+      y += gap;
+    }
+  }
+  return y;
+}
+function drawFutureLinesBottom(rangeStartYear, rangeEndYear, calendarYear, anchorY){
+  const lineH = 6;
+  const gap = 18;
+
+  let y = anchorY;
+  for(let yr=rangeStartYear; yr<=rangeEndYear; yr++){
+    if(yr > calendarYear){
+      drawLineFullWidth(y, lineH, LINE_FUT);
+      y += gap;
+    }
+  }
+  return y;
+}
+
+/* ===== 달력 (공란 완전 공란) ===== */
 function drawMonthsGrid(calendarYear, start, goal, today, topY){
   const cols=3, rows=4;
   const gridX = COL_X;
@@ -154,13 +179,11 @@ function drawMonthsGrid(calendarYear, start, goal, today, topY){
 
     for(let i=0;i<dotCols*dotRows;i++){
       const dayNum = i - firstDay + 1;
-
-      // ✅ 해당 월에 없는 칸은 공란(점 없음)
-      if(dayNum < 1 || dayNum > daysInMonth) continue;
+      if(dayNum < 1 || dayNum > daysInMonth) continue; // 월에 없는 칸 공란
 
       const d = new Date(calendarYear, m, dayNum);
 
-      // ✅ 프로젝트 범위 밖 날짜도 공란(점 없음)
+      // 프로젝트 범위 밖 공란
       if(d < start || d > goal) continue;
 
       const dx=i%dotCols;
@@ -183,56 +206,23 @@ function drawMonthsGrid(calendarYear, start, goal, today, topY){
   return topY + (rows*cellH + (rows-1)*gapY);
 }
 
-/* ===== 4) 하단: 다가올 연도바(어두운색) ===== */
-function drawFutureLinesBottom(rangeStartYear, rangeEndYear, calendarYear, anchorY){
-  const lineH = 6;
-  const gap = 18;
-
-  const futureYears = [];
-  for(let y=rangeStartYear; y<=rangeEndYear; y++){
-    if(y > calendarYear) futureYears.push(y);
-  }
-
-  let y = anchorY;
-  for(let i=0;i<futureYears.length;i++){
-    drawLineFullWidth(y, lineH, LINE_FUT);
-    y += gap;
-  }
-  return y;
-}
-
-/* ===== 5) 푸터 ===== */
-function drawFooter(leftDays, pct){
-  const y = H - Math.round(SAFE_BOT*0.55);
-
+/* ===== 디버그: 렌더가 "실행"되면 무조건 보이는 표식 ===== */
+function drawDebugStamp(){
   ctx.save();
-  ctx.textAlign="center";
-  ctx.font="600 32px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
-
-  const leftText = `${leftDays}d left`;
-  const pctText  = `${pct}%`;
-  const midDot = " · ";
-
-  const wLeft = ctx.measureText(leftText).width;
-  const wDot  = ctx.measureText(midDot).width;
-  const wPct  = ctx.measureText(pctText).width;
-  const total = wLeft + wDot + wPct;
-  const x0 = W/2 - total/2;
-
-  ctx.fillStyle = ACCENT;
-  ctx.fillText(leftText, x0 + wLeft/2, y);
-
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.fillText(midDot, x0 + wLeft + wDot/2, y);
-
-  ctx.fillStyle = "rgba(255,255,255,0.45)";
-  ctx.fillText(pctText, x0 + wLeft + wDot + wPct/2, y);
-
+  ctx.fillStyle = "rgba(255,255,255,0.20)";
+  ctx.fillRect(12, 12, 140, 44);
+  ctx.fillStyle = "rgba(255,255,255,0.80)";
+  ctx.font = "600 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("render OK", 22, 40);
   ctx.restore();
 }
 
 /* ===== 메인 렌더 ===== */
 function render(){
+  clear();
+  drawDebugStamp(); // ✅ 이게 안 보이면 JS가 아예 안 도는 것
+
   const start = parseDate(START);
   const goal  = parseDate(GOAL);
   const today = new Date();
@@ -242,42 +232,42 @@ function render(){
   const pct = Math.floor((doneDays/totalDays)*100);
   const leftDays = Math.max(0, daysBetween(today, goal));
 
-  document.getElementById("info").textContent = `${leftDays}d left · ${pct}%`;
+  const rangeStartYear = start.getFullYear(); // 2021부터
+  const rangeEndYear   = goal.getFullYear();  // 2031까지
 
-  // ✅ 연도바는 2021부터 시작(요구사항)
-  const rangeStartYear = start.getFullYear(); // 2021
-  const rangeEndYear   = goal.getFullYear();  // 2031
-
-  // 달력 연도는 기본 오늘 연도, 범위 밖이면 클램프
   let calendarYear = today.getFullYear();
   if(calendarYear < rangeStartYear) calendarYear = rangeStartYear;
   if(calendarYear > rangeEndYear)   calendarYear = rangeEndYear;
 
-  clear();
-
-  // 1) 상단: 지난 연도바(흰색)
   const pastEndY = drawPastLinesTop(rangeStartYear, rangeEndYear, calendarYear);
 
-  // 2) 현재 연도(달력 연도)
   const yearY = pastEndY + 120;
   drawYearText(calendarYear, yearY);
 
-  // 3) 달력
   const monthsTop = yearY + 80;
   const monthsEnd = drawMonthsGrid(calendarYear, start, goal, today, monthsTop);
 
-  // 4) 하단: 다가올 연도바(어두운색) + 푸터와 겹치지 않게 제한
   const footerY = H - Math.round(SAFE_BOT*0.55);
   const maxBarsBottom = footerY - 80;
   const futureTop = Math.min(monthsEnd + 50, maxBarsBottom - 30);
   drawFutureLinesBottom(rangeStartYear, rangeEndYear, calendarYear, futureTop);
 
-  // 5) 푸터
   drawFooter(leftDays, pct);
 }
 
-render();
+/* ===== 안전 실행: 에러나면 캔버스에 메시지 표시 ===== */
+try{
+  render();
+}catch(e){
+  clear();
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "600 26px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("JS error:", 40, 80);
+  ctx.font = "500 20px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
+  ctx.fillText(String(e), 40, 115);
+  console.error(e);
+}
 </script>
 </body>
 </html>
-

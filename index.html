@@ -1,453 +1,187 @@
 <!doctype html>
 <html lang="ko">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>VR-Goal</title>
+<meta charset="utf-8">
+<title>VR Goal</title>
 <style>
-  body{margin:0;background:#111;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-  .wrap{max-width:980px;margin:0 auto;padding:16px;}
-  .card{background:#151515;border:1px solid #262626;border-radius:16px;padding:14px;}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  label{display:flex;gap:8px;align-items:center;font-size:13px;opacity:.92}
-  input{font-size:14px;padding:10px 12px;border-radius:12px;border:1px solid #2a2a2a;background:#101010;color:#fff;min-width:180px}
-  button{font-size:14px;padding:10px 12px;border-radius:12px;border:1px solid #2a2a2a;background:#101010;color:#fff;cursor:pointer}
-  button.primary{background:#1b1b1b;border-color:#3a3a3a}
-  .hint{font-size:12px;opacity:.7;line-height:1.45;margin-top:10px}
-  canvas{display:block;width:100%;height:auto;border-radius:16px;background:#111;margin-top:12px}
-  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-  .pill{font-size:12px;opacity:.8;border:1px solid #2a2a2a;padding:6px 10px;border-radius:999px}
-  .hidden{display:none}
+body{margin:0;background:#111;font-family:sans-serif;color:#fff}
+.wrap{max-width:900px;margin:auto;padding:20px}
+canvas{width:100%;border-radius:20px;background:#111}
+.top{display:flex;justify-content:space-between;margin-bottom:10px}
+button{padding:8px 14px;background:#151515;border:1px solid #333;color:#fff;border-radius:10px;cursor:pointer}
 </style>
 </head>
 <body>
 <div class="wrap">
-
-  <!-- 결과 화면(기본) -->
-  <div id="viewPage">
-    <div class="topbar">
-      <div class="pill" id="metaText">1179×2556</div>
-      <div class="row">
-        <button id="rerenderBtn">렌더</button>
-        <button id="saveBtn" class="primary">PNG 저장</button>
-        <button id="goSettingsBtn">설정</button>
-      </div>
-    </div>
-    <canvas id="c" width="1179" height="2556"></canvas>
-    <div class="hint">
-      결과 화면만 표시됨. 설정은 <b>#settings</b> 로 숨김 접속 (예: <b>https://vr-goal.vercel.app/#settings</b>)
-    </div>
-  </div>
-
-  <!-- 숨겨진 세팅 페이지 -->
-  <div id="settingsPage" class="hidden">
-    <div class="card">
-      <div class="topbar">
-        <div class="pill">Settings (Hidden)</div>
-        <button id="backBtn">결과로</button>
-      </div>
-
-      <div class="row">
-        <label>Start <input id="start" type="date"></label>
-        <label>Goal <input id="goal" type="date"></label>
-        <label>Title <input id="title" type="text" maxlength="30"></label>
-      </div>
-
-      <div class="row" style="margin-top:10px">
-        <button id="saveSettingsBtn" class="primary">저장</button>
-        <button id="resetBtn">초기화</button>
-      </div>
-
-      <div class="hint">
-        저장하면 이 브라우저에 유지됨(localStorage).<br/>
-        숨김 접속: <b>https://vr-goal.vercel.app/#settings</b>
-      </div>
-    </div>
-  </div>
-
+<div class="top">
+<div id="info"></div>
+<button onclick="render()">렌더</button>
+</div>
+<canvas id="c" width="1179" height="2556"></canvas>
 </div>
 
 <script>
-(() => {
-  /* =========================
-     설정(초기값)
-     ========================= */
-  const DEFAULTS = {
-    start: "2021-12-05",
-    goal:  "2031-12-05",
-    title: "V.R. 10Y"
-  };
-  const STORAGE_KEY = "vr_goal_settings_v3";
-
-  /* =========================
-     페이지 전환(숨김 세팅)
-     ========================= */
-  const viewPage = document.getElementById("viewPage");
-  const settingsPage = document.getElementById("settingsPage");
-
-  function showView(){
-    viewPage.classList.remove("hidden");
-    settingsPage.classList.add("hidden");
-    if (location.hash !== "") history.replaceState(null, "", location.pathname);
-  }
-  function showSettings(){
-    viewPage.classList.add("hidden");
-    settingsPage.classList.remove("hidden");
-    if (location.hash !== "#settings") location.hash = "#settings";
-  }
-
-  document.getElementById("goSettingsBtn").addEventListener("click", showSettings);
-  document.getElementById("backBtn").addEventListener("click", () => { showView(); render(); });
-
-  window.addEventListener("hashchange", () => {
-    if (location.hash === "#settings") showSettings();
-    else { showView(); render(); }
-  });
-
-  /* =========================
-     설정 로드/저장
-     ========================= */
-  const elStart = document.getElementById("start");
-  const elGoal  = document.getElementById("goal");
-  const elTitle = document.getElementById("title");
-
-  function loadSettings(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if(!raw) return {...DEFAULTS};
-      const s = JSON.parse(raw);
-      return {
-        start: s.start || DEFAULTS.start,
-        goal:  s.goal  || DEFAULTS.goal,
-        title: (s.title || DEFAULTS.title).slice(0,30)
-      };
-    }catch(_){
-      return {...DEFAULTS};
-    }
-  }
-  function saveSettings(s){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-  }
-  function applySettingsToInputs(s){
-    elStart.value = s.start;
-    elGoal.value  = s.goal;
-    elTitle.value = s.title;
-  }
-  function readInputs(){
-    return {
-      start: elStart.value || DEFAULTS.start,
-      goal:  elGoal.value  || DEFAULTS.goal,
-      title: (elTitle.value || DEFAULTS.title).trim().slice(0,30) || DEFAULTS.title
-    };
-  }
-
-  document.getElementById("saveSettingsBtn").addEventListener("click", () => {
-    const s = readInputs();
-    if (s.goal < s.start){
-      const tmp = s.start; s.start = s.goal; s.goal = tmp;
-      applySettingsToInputs(s);
-    }
-    saveSettings(s);
-    showView();
-    render();
-  });
-
-  document.getElementById("resetBtn").addEventListener("click", () => {
-    saveSettings({...DEFAULTS});
-    applySettingsToInputs({...DEFAULTS});
-  });
-
-  /* =========================
-     캔버스 렌더(시안 기반)
-     - 미래 연도 줄: 상단
-     - 현재 연도: 가운데 큰 숫자
-     - 달력: 가운데 몰림
-     - 과거 연도 줄: 달력 아래
-     - 폭: 연도줄 폭 = 달력 폭 (COLUMN_W)
-     ========================= */
-  const W = 1179, H = 2556;
-  const c = document.getElementById("c");
-  const ctx = c.getContext("2d");
-
-  // 톤
-  const BG = "#121212";
-  const DOT_FUTURE = "rgba(255,255,255,0.14)";
-  const DOT_DONE   = "rgba(255,255,255,0.92)";
-  const DOT_BLANK  = "rgba(255,255,255,0.08)";
-  const ACCENT     = "#ff6a2a";
-  const LABEL      = "rgba(255,255,255,0.45)";
-  const YEAR_TEXT  = "rgba(255,255,255,0.92)";
-  const LINE_PAST  = "rgba(255,255,255,0.90)";
-  const LINE_FUT   = "rgba(255,255,255,0.22)";
-
-  // 가운데 몰림 폭(달력 폭 = 연도줄 폭)
-  const COLUMN_W = Math.round(W * 0.74);
-  const COLUMN_X = Math.round((W - COLUMN_W) / 2);
-
-  // 상/하단 안전 여백(아이폰 시간/위젯/홈바)
-  const SAFE_TOP = Math.round(H * 0.16);
-  const SAFE_BOT = Math.round(H * 0.18);
-
-  function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
-  function parseDate(v){
-    const [y,m,d] = v.split("-").map(Number);
-    return new Date(y, m-1, d);
-  }
-  function daysBetween(a,b){
-    const A = new Date(a.getFullYear(), a.getMonth(), a.getDate());
-    const B = new Date(b.getFullYear(), b.getMonth(), b.getDate());
-    return Math.floor((B - A) / 86400000);
-  }
-  function sameDay(a,b){
-    return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
-  }
-  function clear(){
-    ctx.fillStyle = BG;
-    ctx.fillRect(0,0,W,H);
-  }
-  function drawRoundLine(x0,y0,x1,y1,w,color){
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = w;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(x0,y0);
-    ctx.lineTo(x1,y1);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  // (A) 상단: 미래 연도 줄(회색)
-  function drawFutureLinesTop(start, goal, today){
-    const y0 = start.getFullYear();
-    const y1 = goal.getFullYear();
-    const cy = today.getFullYear();
-
-    const years = [];
-    for(let y=y0; y<=y1; y++) years.push(y);
-    const futureYears = years.filter(y => y > cy);
-
-    // 달력폭과 정확히 동일한 폭 사용
-    const padX = Math.round(COLUMN_W * 0.04);
-    const x0Line = COLUMN_X + padX;
-    const x1Line = COLUMN_X + COLUMN_W - padX;
-
-    const lineH = 6;
-    const lineGap = 18;
-    const topY = SAFE_TOP + 90;
-
-    for(let i=0;i<futureYears.length;i++){
-      const yy = topY + i*lineGap;
-      drawRoundLine(x0Line, yy, x1Line, yy, lineH, LINE_FUT);
-    }
-
-    return topY + futureYears.length*lineGap; // 마지막 줄 아래 y
-  }
-
-  // (B) 달력 그리기(월 라벨 + 6주 도트)
-  function drawMonths(currentYear, start, goal, today, topY){
-    const gridX = COLUMN_X;
-    const gridW = COLUMN_W;
-
-    const cols = 3, rows = 4;
-    const cellGapX = 50;
-    const cellGapY = 44;
-
-    const cellW = Math.floor((gridW - cellGapX*(cols-1))/cols);
-    const cellH = 230;
-
-    const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-    // dot params
-    const dotCols = 7;
-    const gap = 10;
-    const dotSize = Math.floor((cellW - gap*(dotCols-1))/dotCols);
-    const r = dotSize/2;
-    const used = 42;
-
-    ctx.save();
-    for(let m=0;m<12;m++){
-      const cx = m % cols;
-      const cy = Math.floor(m / cols);
-
-      const x = gridX + cx*(cellW + cellGapX);
-      const y = topY + cy*(cellH + cellGapY);
-
-      // month label
-      ctx.fillStyle = LABEL;
-      ctx.font = "600 22px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText(names[m], x, y);
-
-      const dotsX = x;
-      const dotsY = y + 28;
-
-      const daysInMonth = new Date(currentYear, m+1, 0).getDate();
-      const firstDay = new Date(currentYear, m, 1).getDay();
-
-      for(let i=0;i<used;i++){
-        const rx = i % dotCols;
-        const ry = Math.floor(i / dotCols);
-
-        const px = dotsX + rx*(dotSize+gap) + r;
-        const py = dotsY + ry*(dotSize+gap) + r;
-
-        const dayNum = i - firstDay + 1;
-        let fill = DOT_BLANK;
-
-        if(dayNum >= 1 && dayNum <= daysInMonth){
-          const date = new Date(currentYear, m, dayNum);
-          const outOfRange = (date < start || date > goal);
-
-          if(date < today) fill = outOfRange ? "rgba(255,255,255,0.10)" : DOT_DONE;
-          if(sameDay(date, today)) fill = ACCENT;
-          if(date > today) fill = outOfRange ? "rgba(255,255,255,0.10)" : DOT_FUTURE;
-        }
-
-        ctx.fillStyle = fill;
-        ctx.beginPath();
-        ctx.arc(px, py, r, 0, Math.PI*2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-
-    // 달력 전체 하단 y 계산(고정값 기반)
-    const totalH = rows*cellH + (rows-1)*cellGapY + 28 + 6*(dotSize+gap);
-    return topY + totalH;
-  }
-
-  // (C) 하단: 과거 연도 줄(흰색) — 달력 아래에 배치
-  function drawPastLinesBottom(start, goal, today, anchorY){
-    const y0 = start.getFullYear();
-    const y1 = goal.getFullYear();
-    const cy = today.getFullYear();
-
-    const years = [];
-    for(let y=y0; y<=y1; y++) years.push(y);
-    const pastYears = years.filter(y => y < cy);
-
-    const padX = Math.round(COLUMN_W * 0.04);
-    const x0Line = COLUMN_X + padX;
-    const x1Line = COLUMN_X + COLUMN_W - padX;
-
-    const lineH = 6;
-    const lineGap = 18;
-
-    for(let i=0;i<pastYears.length;i++){
-      const yy = anchorY + i*lineGap;
-      drawRoundLine(x0Line, yy, x1Line, yy, lineH, LINE_PAST);
-    }
-    return anchorY + pastYears.length*lineGap;
-  }
-
-  // (D) 푸터: left만 주황, %는 회색
-  function drawFooter(leftDays, pct){
-    const y = H - SAFE_BOT + 80;
-
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.font = "600 30px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
-
-    const leftText = `${leftDays}d left`;
-    const pctText = `${pct}%`;
-    const midDot = " · ";
-
-    const wLeft = ctx.measureText(leftText).width;
-    const wDot  = ctx.measureText(midDot).width;
-    const wPct  = ctx.measureText(pctText).width;
-    const total = wLeft + wDot + wPct;
-
-    const x0 = W/2 - total/2;
-
-    ctx.fillStyle = ACCENT;
-    ctx.fillText(leftText, x0 + wLeft/2, y);
-
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillText(midDot, x0 + wLeft + wDot/2, y);
-
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.fillText(pctText, x0 + wLeft + wDot + wPct/2, y);
-
-    ctx.restore();
-  }
-
-  // 메인 렌더
-  function render(){
-    const s = loadSettings();
-    let start = parseDate(s.start);
-    let goal  = parseDate(s.goal);
-    const today = new Date();
-
-    if(goal < start){ const t=start; start=goal; goal=t; }
-
-    const total = Math.max(1, daysBetween(start, goal));
-    const done  = clamp(daysBetween(start, today), 0, total);
-    const pct = Math.floor((done/total)*100);
-    const leftDays = Math.max(0, daysBetween(today, goal));
-
-    document.getElementById("metaText").textContent = `1179×2556 · ${leftDays}d left · ${pct}%`;
-
-    clear();
-
-    // 1) 미래 연도 줄(상단)
-    const futureEndY = drawFutureLinesTop(start, goal, today);
-
-    // 2) 현재 연도 숫자(줄과 달력 사이)
-    const yearY = futureEndY + 140;
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.fillStyle = YEAR_TEXT;
-    ctx.font = "700 78px Georgia, 'Times New Roman', serif";
-    ctx.fillText(String(today.getFullYear()), W/2, yearY);
-    ctx.restore();
-
-    // 3) 달력
-    const monthsTop = yearY + 70;
-    const monthsEnd = drawMonths(today.getFullYear(), start, goal, today, monthsTop);
-
-    // 4) 과거 연도 줄(달력 아래)  ✅ 네 요구 반영
-    const pastTop = monthsEnd + 40;
-    drawPastLinesBottom(start, goal, today, pastTop);
-
-    // 5) 푸터
-    drawFooter(leftDays, pct);
-  }
-
-  // 자정 자동 갱신
-  function scheduleNextMidnightRefresh(){
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 2);
-    setTimeout(() => {
-      render();
-      scheduleNextMidnightRefresh();
-    }, next - now);
-  }
-
-  /* =========================
-     버튼들
-     ========================= */
-  document.getElementById("rerenderBtn").addEventListener("click", render);
-
-  document.getElementById("saveBtn").addEventListener("click", () => {
-    const a = document.createElement("a");
-    a.download = "vr-goal.png";
-    a.href = c.toDataURL("image/png");
-    a.click();
-  });
-
-  /* =========================
-     초기 실행
-     ========================= */
-  const settings = loadSettings();
-  applySettingsToInputs(settings);
-
-  if (location.hash === "#settings") showSettings();
-  else showView();
-
-  render();
-  scheduleNextMidnightRefresh();
-})();
+const startDate = new Date("2021-12-05");
+const goalDate  = new Date("2031-12-05");
+
+const W = 1179;
+const H = 2556;
+
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+
+const SAFE_TOP = H*0.16;
+const SAFE_BOTTOM = H*0.18;
+
+const COL_W = W*0.72;
+const COL_X = (W-COL_W)/2;
+
+const C_PAST = "#ffffff";
+const C_FUTURE = "rgba(255,255,255,.25)";
+const C_DOT = "rgba(255,255,255,.15)";
+const C_DONE = "#ffffff";
+const C_NOW = "#ff6a2a";
+
+function days(a,b){return Math.floor((b-a)/86400000)}
+
+function line(x1,y,x2,w,c){
+ctx.strokeStyle=c;
+ctx.lineWidth=w;
+ctx.lineCap="round";
+ctx.beginPath();
+ctx.moveTo(x1,y);
+ctx.lineTo(x2,y);
+ctx.stroke();
+}
+
+function clear(){
+ctx.fillStyle="#111";
+ctx.fillRect(0,0,W,H);
+}
+
+function drawPast(today){
+let years=[];
+for(let y=startDate.getFullYear();y<today.getFullYear();y++)years.push(y);
+
+let y=SAFE_TOP+60;
+for(let i=0;i<years.length;i++){
+line(COL_X+20,y,COL_X+COL_W-20,6,C_PAST);
+y+=18;
+}
+return y;
+}
+
+function drawFuture(today,startY){
+let years=[];
+for(let y=today.getFullYear()+1;y<=goalDate.getFullYear();y++)years.push(y);
+
+let y=startY;
+for(let i=0;i<years.length;i++){
+line(COL_X+20,y,COL_X+COL_W-20,6,C_FUTURE);
+y+=18;
+}
+return y;
+}
+
+function drawYear(today,y){
+ctx.fillStyle="#fff";
+ctx.textAlign="center";
+ctx.font="700 80px serif";
+ctx.fillText(today.getFullYear(),W/2,y);
+}
+
+function drawMonths(today,startY){
+let mNames=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+let cellW=(COL_W-100)/3;
+let dotGap=10;
+let dot=12;
+
+let y=startY;
+for(let m=0;m<12;m++){
+let cx=m%3;
+let cy=Math.floor(m/3);
+let x=COL_X+cx*(cellW+50);
+let yy=y+cy*260;
+
+ctx.fillStyle="rgba(255,255,255,.5)";
+ctx.font="600 20px sans-serif";
+ctx.textAlign="left";
+ctx.fillText(mNames[m],x,yy);
+
+let first=new Date(today.getFullYear(),m,1).getDay();
+let daysM=new Date(today.getFullYear(),m+1,0).getDate();
+
+for(let i=0;i<42;i++){
+let dx=i%7;
+let dy=Math.floor(i/7);
+
+let px=x+dx*(dot+dotGap);
+let py=yy+25+dy*(dot+dotGap);
+
+let day=i-first+1;
+
+ctx.fillStyle=C_DOT;
+
+if(day>=1&&day<=daysM){
+let d=new Date(today.getFullYear(),m,day);
+if(d<today)ctx.fillStyle=C_DONE;
+if(d>today)ctx.fillStyle=C_DOT;
+if(d.toDateString()==today.toDateString())ctx.fillStyle=C_NOW;
+}
+
+ctx.beginPath();
+ctx.arc(px,py,dot/2,0,6.28);
+ctx.fill();
+}
+}
+return y+4*260;
+}
+
+function drawFooter(today){
+let total=days(startDate,goalDate);
+let done=Math.max(0,days(startDate,today));
+let pct=Math.floor(done/total*100);
+let left=Math.max(0,days(today,goalDate));
+
+let y=H-SAFE_BOTTOM/2;
+
+ctx.textAlign="center";
+ctx.font="600 32px sans-serif";
+
+let t1=`${left}d left`;
+let t2=` · ${pct}%`;
+
+let w1=ctx.measureText(t1).width;
+let w2=ctx.measureText(t2).width;
+
+let start=W/2-(w1+w2)/2;
+
+ctx.fillStyle="#ff6a2a";
+ctx.fillText(t1,start+w1/2,y);
+
+ctx.fillStyle="rgba(255,255,255,.5)";
+ctx.fillText(t2,start+w1+w2/2,y);
+
+document.getElementById("info").innerText=`${left}d left · ${pct}%`;
+}
+
+function render(){
+let today=new Date();
+clear();
+
+let topEnd=drawPast(today);
+let yearY=topEnd+120;
+
+drawYear(today,yearY);
+
+let calStart=yearY+80;
+let calEnd=drawMonths(today,calStart);
+
+drawFuture(today,calEnd+40);
+drawFooter(today);
+}
+
+render();
 </script>
 </body>
 </html>

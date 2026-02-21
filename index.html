@@ -28,13 +28,14 @@
     <div class="topbar">
       <div class="pill" id="metaText">1179×2556</div>
       <div class="row">
+        <button id="rerenderBtn">렌더</button>
         <button id="saveBtn" class="primary">PNG 저장</button>
         <button id="goSettingsBtn">설정</button>
       </div>
     </div>
     <canvas id="c" width="1179" height="2556"></canvas>
     <div class="hint">
-      기본은 결과만 표시. 설정은 <b>#settings</b> (예: <b>https://vr-goal.vercel.app/#settings</b>)
+      결과 화면만 표시됨. 설정은 <b>#settings</b> 로 숨김 접속 (예: <b>https://vr-goal.vercel.app/#settings</b>)
     </div>
   </div>
 
@@ -69,18 +70,17 @@
 <script>
 (() => {
   /* =========================
-     0) 기본 설정(초기값)
+     설정(초기값)
      ========================= */
   const DEFAULTS = {
     start: "2021-12-05",
     goal:  "2031-12-05",
     title: "V.R. 10Y"
   };
-
-  const STORAGE_KEY = "vr_goal_settings_v2";
+  const STORAGE_KEY = "vr_goal_settings_v3";
 
   /* =========================
-     1) 페이지 전환(숨김 세팅)
+     페이지 전환(숨김 세팅)
      ========================= */
   const viewPage = document.getElementById("viewPage");
   const settingsPage = document.getElementById("settingsPage");
@@ -90,7 +90,6 @@
     settingsPage.classList.add("hidden");
     if (location.hash !== "") history.replaceState(null, "", location.pathname);
   }
-
   function showSettings(){
     viewPage.classList.add("hidden");
     settingsPage.classList.remove("hidden");
@@ -106,7 +105,7 @@
   });
 
   /* =========================
-     2) 설정 로드/저장
+     설정 로드/저장
      ========================= */
   const elStart = document.getElementById("start");
   const elGoal  = document.getElementById("goal");
@@ -126,17 +125,14 @@
       return {...DEFAULTS};
     }
   }
-
   function saveSettings(s){
     localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   }
-
   function applySettingsToInputs(s){
     elStart.value = s.start;
     elGoal.value  = s.goal;
     elTitle.value = s.title;
   }
-
   function readInputs(){
     return {
       start: elStart.value || DEFAULTS.start,
@@ -162,53 +158,53 @@
   });
 
   /* =========================
-     3) 월페이퍼 렌더링(캔버스)
+     캔버스 렌더(시안 기반)
+     - 미래 연도 줄: 상단
+     - 현재 연도: 가운데 큰 숫자
+     - 달력: 가운데 몰림
+     - 과거 연도 줄: 달력 아래
+     - 폭: 연도줄 폭 = 달력 폭 (COLUMN_W)
      ========================= */
   const W = 1179, H = 2556;
   const c = document.getElementById("c");
   const ctx = c.getContext("2d");
 
-  // 시안 느낌에 맞춘 톤(흰색/회색/오렌지)
+  // 톤
   const BG = "#121212";
   const DOT_FUTURE = "rgba(255,255,255,0.14)";
   const DOT_DONE   = "rgba(255,255,255,0.92)";
   const DOT_BLANK  = "rgba(255,255,255,0.08)";
-  const ACCENT     = "#ff6a2a"; // 시안의 주황 톤에 가까운 편
+  const ACCENT     = "#ff6a2a";
   const LABEL      = "rgba(255,255,255,0.45)";
   const YEAR_TEXT  = "rgba(255,255,255,0.92)";
   const LINE_PAST  = "rgba(255,255,255,0.90)";
   const LINE_FUT   = "rgba(255,255,255,0.22)";
 
-  // “가운데 몰림” 레이아웃 폭(아이폰 배경에서 좌우 여백 넉넉하게)
+  // 가운데 몰림 폭(달력 폭 = 연도줄 폭)
   const COLUMN_W = Math.round(W * 0.74);
   const COLUMN_X = Math.round((W - COLUMN_W) / 2);
 
-  // 상/하단 여백(아이폰 시간/위젯, 홈바 영역 확보)
+  // 상/하단 안전 여백(아이폰 시간/위젯/홈바)
   const SAFE_TOP = Math.round(H * 0.16);
   const SAFE_BOT = Math.round(H * 0.18);
 
   function clamp(n,a,b){ return Math.max(a, Math.min(b,n)); }
-
   function parseDate(v){
     const [y,m,d] = v.split("-").map(Number);
     return new Date(y, m-1, d);
   }
-
   function daysBetween(a,b){
     const A = new Date(a.getFullYear(), a.getMonth(), a.getDate());
     const B = new Date(b.getFullYear(), b.getMonth(), b.getDate());
     return Math.floor((B - A) / 86400000);
   }
-
   function sameDay(a,b){
     return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate();
   }
-
   function clear(){
     ctx.fillStyle = BG;
     ctx.fillRect(0,0,W,H);
   }
-
   function drawRoundLine(x0,y0,x1,y1,w,color){
     ctx.save();
     ctx.strokeStyle = color;
@@ -221,70 +217,53 @@
     ctx.restore();
   }
 
-  /* ===== 핵심: 연도 진행을 “위/아래 라인 스택”으로 =====
-     - 지난 연도: 위 스택에 흰 줄
-     - 남은 연도: 아래 스택에 회색 줄
-     - 현재 연도는 줄에서 제외하고, 가운데에 큰 숫자로 표시
-  */
-  function drawYearStacks(start, goal, today){
+  // (A) 상단: 미래 연도 줄(회색)
+  function drawFutureLinesTop(start, goal, today){
     const y0 = start.getFullYear();
     const y1 = goal.getFullYear();
+    const cy = today.getFullYear();
 
-    const currentYear = today.getFullYear();
     const years = [];
     for(let y=y0; y<=y1; y++) years.push(y);
+    const futureYears = years.filter(y => y > cy);
 
-    const pastYears = years.filter(y => y < currentYear);
-    const futureYears = years.filter(y => y > currentYear);
+    // 달력폭과 정확히 동일한 폭 사용
+    const padX = Math.round(COLUMN_W * 0.04);
+    const x0Line = COLUMN_X + padX;
+    const x1Line = COLUMN_X + COLUMN_W - padX;
 
-    // 시안처럼 여러 줄(연도 수만큼) 쌓되, 너무 많으면 “표시 줄 수”를 줄여도 됨.
-    // 일단은 10~11년 수준이면 그대로 쌓아도 시각적으로 괜찮음.
-    const lineH = 6;        // 줄 두께
-    const lineGap = 18;     // 줄 간격(시안 느낌)
-    const lineLen = Math.round(COLUMN_W * 0.92);
-    const x0Line = Math.round(COLUMN_X + (COLUMN_W - lineLen)/2);
-    const x1Line = x0Line + lineLen;
+    const lineH = 6;
+    const lineGap = 18;
+    const topY = SAFE_TOP + 90;
 
-    // 위 스택(지난 연도)
-    const topBlockY = SAFE_TOP + 120;
-    for(let i=0;i<pastYears.length;i++){
-      const y = topBlockY + i*lineGap;
-      drawRoundLine(x0Line, y, x1Line, y, lineH, LINE_PAST);
-    }
-
-    // 가운데 연도 텍스트 (위 스택과 아래 스택 사이)
-    const yearTextY = topBlockY + pastYears.length*lineGap + 170;
-    ctx.save();
-    ctx.textAlign = "center";
-    ctx.fillStyle = YEAR_TEXT;
-    ctx.font = "700 78px Georgia, 'Times New Roman', serif"; // 시안의 느낌(세리프)
-    ctx.fillText(String(currentYear), W/2, yearTextY);
-    ctx.restore();
-
-    // 아래 스택(남은 연도)
-    const bottomBlockY = yearTextY - 6 + 140; // 연도 텍스트 아래 시작점
     for(let i=0;i<futureYears.length;i++){
-      const y = bottomBlockY + i*lineGap;
-      drawRoundLine(x0Line, y, x1Line, y, lineH, LINE_FUT);
+      const yy = topY + i*lineGap;
+      drawRoundLine(x0Line, yy, x1Line, yy, lineH, LINE_FUT);
     }
 
-    // 다음 요소(달력)의 시작 y를 리턴
-    return bottomBlockY + futureYears.length*lineGap + 40;
+    return topY + futureYears.length*lineGap; // 마지막 줄 아래 y
   }
 
+  // (B) 달력 그리기(월 라벨 + 6주 도트)
   function drawMonths(currentYear, start, goal, today, topY){
-    // 3x4 월 그리드: “가운데 몰림” + 좌우 여백
     const gridX = COLUMN_X;
     const gridW = COLUMN_W;
-    const cols = 3, rows = 4;
 
+    const cols = 3, rows = 4;
     const cellGapX = 50;
     const cellGapY = 44;
 
     const cellW = Math.floor((gridW - cellGapX*(cols-1))/cols);
-    const cellH = 230; // 시안처럼 도트만 보이게 깔끔하게(카드 배경 제거)
+    const cellH = 230;
 
     const names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+    // dot params
+    const dotCols = 7;
+    const gap = 10;
+    const dotSize = Math.floor((cellW - gap*(dotCols-1))/dotCols);
+    const r = dotSize/2;
+    const used = 42;
 
     ctx.save();
     for(let m=0;m<12;m++){
@@ -294,26 +273,17 @@
       const x = gridX + cx*(cellW + cellGapX);
       const y = topY + cy*(cellH + cellGapY);
 
-      // 월 라벨
+      // month label
       ctx.fillStyle = LABEL;
       ctx.font = "600 22px system-ui,-apple-system,Segoe UI,Roboto,sans-serif";
       ctx.textAlign = "left";
       ctx.fillText(names[m], x, y);
 
-      // 도트 영역
       const dotsX = x;
       const dotsY = y + 28;
-      const dotsW = cellW;
-      const dotCols = 7;      // 달력 느낌(7열)
-      const gap = 10;
-
-      // 도트 크기(원형)
-      const dotSize = Math.floor((dotsW - gap*(dotCols-1))/dotCols);
-      const r = dotSize/2;
 
       const daysInMonth = new Date(currentYear, m+1, 0).getDate();
-      const firstDay = new Date(currentYear, m, 1).getDay(); // 0=Sun
-      const used = 42; // 6주 고정(시안처럼 깔끔한 덩어리)
+      const firstDay = new Date(currentYear, m, 1).getDay();
 
       for(let i=0;i<used;i++){
         const rx = i % dotCols;
@@ -327,8 +297,6 @@
 
         if(dayNum >= 1 && dayNum <= daysInMonth){
           const date = new Date(currentYear, m, dayNum);
-
-          // 프로젝트 범위 밖은 더 어둡게(원하면 유지)
           const outOfRange = (date < start || date > goal);
 
           if(date < today) fill = outOfRange ? "rgba(255,255,255,0.10)" : DOT_DONE;
@@ -344,13 +312,37 @@
     }
     ctx.restore();
 
-    // 그리드 끝 y 리턴
-    const totalH = rows*cellH + (rows-1)*cellGapY + 28 + 6*(dotSize+gap); // 대략
+    // 달력 전체 하단 y 계산(고정값 기반)
+    const totalH = rows*cellH + (rows-1)*cellGapY + 28 + 6*(dotSize+gap);
     return topY + totalH;
   }
 
+  // (C) 하단: 과거 연도 줄(흰색) — 달력 아래에 배치
+  function drawPastLinesBottom(start, goal, today, anchorY){
+    const y0 = start.getFullYear();
+    const y1 = goal.getFullYear();
+    const cy = today.getFullYear();
+
+    const years = [];
+    for(let y=y0; y<=y1; y++) years.push(y);
+    const pastYears = years.filter(y => y < cy);
+
+    const padX = Math.round(COLUMN_W * 0.04);
+    const x0Line = COLUMN_X + padX;
+    const x1Line = COLUMN_X + COLUMN_W - padX;
+
+    const lineH = 6;
+    const lineGap = 18;
+
+    for(let i=0;i<pastYears.length;i++){
+      const yy = anchorY + i*lineGap;
+      drawRoundLine(x0Line, yy, x1Line, yy, lineH, LINE_PAST);
+    }
+    return anchorY + pastYears.length*lineGap;
+  }
+
+  // (D) 푸터: left만 주황, %는 회색
   function drawFooter(leftDays, pct){
-    // 시안처럼 하단 중앙: "313d left · 14%" (left만 주황)
     const y = H - SAFE_BOT + 80;
 
     ctx.save();
@@ -361,7 +353,6 @@
     const pctText = `${pct}%`;
     const midDot = " · ";
 
-    // 텍스트 폭을 계산해서 정확히 가운데 정렬(색 분리)
     const wLeft = ctx.measureText(leftText).width;
     const wDot  = ctx.measureText(midDot).width;
     const wPct  = ctx.measureText(pctText).width;
@@ -381,11 +372,11 @@
     ctx.restore();
   }
 
+  // 메인 렌더
   function render(){
     const s = loadSettings();
     let start = parseDate(s.start);
     let goal  = parseDate(s.goal);
-    const title = s.title || DEFAULTS.title;
     const today = new Date();
 
     if(goal < start){ const t=start; start=goal; goal=t; }
@@ -399,15 +390,31 @@
 
     clear();
 
-    // (선택) 타이틀을 화면에 안 넣고 싶으면 여기 2줄 삭제
-    // 시안은 연도만 크게 있으니, title은 숨기고 싶으면 주석 처리하면 됨.
-    // ctx.save(); ctx.fillStyle="rgba(255,255,255,0.0)"; ctx.restore();
+    // 1) 미래 연도 줄(상단)
+    const futureEndY = drawFutureLinesTop(start, goal, today);
 
-    const nextY = drawYearStacks(start, goal, today);
-    drawMonths(today.getFullYear(), start, goal, today, nextY + 20);
+    // 2) 현재 연도 숫자(줄과 달력 사이)
+    const yearY = futureEndY + 140;
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.fillStyle = YEAR_TEXT;
+    ctx.font = "700 78px Georgia, 'Times New Roman', serif";
+    ctx.fillText(String(today.getFullYear()), W/2, yearY);
+    ctx.restore();
+
+    // 3) 달력
+    const monthsTop = yearY + 70;
+    const monthsEnd = drawMonths(today.getFullYear(), start, goal, today, monthsTop);
+
+    // 4) 과거 연도 줄(달력 아래)  ✅ 네 요구 반영
+    const pastTop = monthsEnd + 40;
+    drawPastLinesBottom(start, goal, today, pastTop);
+
+    // 5) 푸터
     drawFooter(leftDays, pct);
   }
 
+  // 자정 자동 갱신
   function scheduleNextMidnightRefresh(){
     const now = new Date();
     const next = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 2);
@@ -418,8 +425,10 @@
   }
 
   /* =========================
-     4) PNG 저장
+     버튼들
      ========================= */
+  document.getElementById("rerenderBtn").addEventListener("click", render);
+
   document.getElementById("saveBtn").addEventListener("click", () => {
     const a = document.createElement("a");
     a.download = "vr-goal.png";
@@ -428,7 +437,7 @@
   });
 
   /* =========================
-     5) 초기화
+     초기 실행
      ========================= */
   const settings = loadSettings();
   applySettingsToInputs(settings);

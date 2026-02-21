@@ -1,6 +1,157 @@
 <!DOCTYPE html>
-<html>
-<body style="background:black;color:white;text-align:center;margin-top:40vh;font-size:40px">
-LIFE CALENDAR READY
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>VR Goal</title>
+<style>
+body{
+ margin:0;
+ background:#111;
+ color:#fff;
+ font-family:sans-serif;
+ text-align:center;
+}
+
+.wrapper{
+ max-width:1179px;
+ margin:auto;
+ padding:40px 20px;
+ position:relative;
+}
+
+.wrapper::before,
+.wrapper::after{
+ content:"";
+ position:absolute;
+ left:0;
+ right:0;
+ height:2px;
+ background:rgba(255,255,255,0.25);
+}
+
+.wrapper::before{ top:0; }
+.wrapper::after{ bottom:0; }
+
+.yearbar{
+ display:flex;
+ justify-content:space-between;
+ margin-bottom:30px;
+}
+
+.year{
+ flex:1;
+ margin:0 2px;
+ height:14px;
+ background:#333;
+ border-radius:20px;
+ position:relative;
+}
+
+.year.done{ background:#fff; }
+.year.current{ background:#ff9800; }
+
+.months{
+ display:grid;
+ grid-template-columns:repeat(3,1fr);
+ gap:20px;
+}
+
+.month{
+ padding:10px;
+ background:#181818;
+ border-radius:14px;
+}
+
+.label{
+ margin-bottom:8px;
+ font-size:14px;
+ opacity:.7;
+}
+
+.days{
+ display:grid;
+ grid-template-columns:repeat(7,1fr);
+ gap:3px;
+}
+
+.day{
+ width:100%;
+ padding-top:100%;
+ border-radius:50%;
+ background:#333;
+}
+
+.day.done{ background:#fff; }
+.day.today{ background:#ff9800; }
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+
+<div id="yearbar" class="yearbar"></div>
+<div id="months" class="months"></div>
+
+</div>
+
+<script>
+const start = new Date("2021-12-05");
+const goal = new Date("2031-12-05");
+const today = new Date();
+
+const yearbar=document.getElementById("yearbar");
+const monthsEl=document.getElementById("months");
+
+const startYear=start.getFullYear();
+const goalYear=goal.getFullYear();
+const currentYear=today.getFullYear();
+
+/* ===== 상단 10년 바 ===== */
+for(let y=startYear;y<=goalYear;y++){
+ const d=document.createElement("div");
+ d.className="year";
+ if(y<currentYear)d.classList.add("done");
+ if(y===currentYear)d.classList.add("current");
+ yearbar.appendChild(d);
+}
+
+/* ===== 현재 연도 달력 ===== */
+const names=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+for(let m=0;m<12;m++){
+
+ const month=document.createElement("div");
+ month.className="month";
+
+ const label=document.createElement("div");
+ label.className="label";
+ label.textContent=names[m];
+ month.appendChild(label);
+
+ const days=document.createElement("div");
+ days.className="days";
+
+ const daysInMonth=new Date(currentYear,m+1,0).getDate();
+
+ for(let d=1;d<=daysInMonth;d++){
+  const dot=document.createElement("div");
+  dot.className="day";
+
+  const date=new Date(currentYear,m,d);
+
+  if(date<today)dot.classList.add("done");
+  if(
+   d===today.getDate() &&
+   m===today.getMonth()
+  )dot.classList.add("today");
+
+  days.appendChild(dot);
+ }
+
+ month.appendChild(days);
+ monthsEl.appendChild(month);
+}
+</script>
+
 </body>
 </html>
